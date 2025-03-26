@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <BleGamepad.h>
 
-BleGamepad bleGamepad("Controle 1", "Thiago Canella's Project", 100);
+BleGamepad bleGamepad("Arcade 2", "Thiago Canella's Project", 100);
 
 
 #define latencia 5
@@ -16,6 +16,8 @@ byte physicalButtons[numOfButtons] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 byte previousHatStates[numOfHats * 4];
 byte currentHatStates[numOfHats * 4];
 byte hatPins[numOfHats * 4] = {26, 27, 32, 33}; // Na ordem UP, LEFT, DOWN, RIGHT.
+bool primeiroLoop = true;
+bool setDirecionalAnalogico = false;
 
 void setup() {
     setupButtons();
@@ -24,12 +26,17 @@ void setup() {
 }
 
 void loop() {
-    if (bleGamepad.isConnected()) {
-        updateButtonStates();
-        updateHatStates();
-        sendReportIfChanged();
-        delay(latencia);
-    }
+  if(primeiroLoop){
+    verificaTipoDirecional();
+  }
+
+
+  if (bleGamepad.isConnected()) {
+    updateButtonStates();
+    updateHatStates();
+    sendReportIfChanged();
+    delay(latencia);
+  }
 }
 
 void setupButtons() {
@@ -51,10 +58,13 @@ void setupHats() {
 void setupBleGamepad() {
     BleGamepadConfiguration bleGamepadConfig;
     bleGamepadConfig.setAutoReport(false);
-    bleGamepadConfig.setWhichAxes(0, 0, 0, 0, 0, 0, 0, 0); // Desativar todos os eixos
+    bleGamepadConfig.setWhichAxes(true , true , false, false, false, false, false, false); // Desativar todos os eixos
+    bleGamepadConfig.setAxesMin(0x8001);
+    bleGamepadConfig.setAxesMax(0x7FFF);
     bleGamepadConfig.setButtonCount(numOfButtons);
     bleGamepadConfig.setHatSwitchCount(numOfHats);
     bleGamepadConfig.setTXPowerLevel(9);
+
     bleGamepad.begin(&bleGamepadConfig);
 }
 
@@ -73,17 +83,85 @@ void updateButtonStates() {
 }
 
 void updateHatStates() {
-    signed char hatValues[numOfHats * 4] = {0};
+    if(setDirecionalAnalogico == false){
+      signed char hatValues[numOfHats * 4] = {0};
 
-    for (byte i = 0; i < numOfHats * 4; i++) {
+      for (byte i = 0; i < numOfHats * 4; i++) {
         currentHatStates[i] = digitalRead(hatPins[i]);
-    }
+      }
 
-    for (byte hatIndex = 0; hatIndex < numOfHats; hatIndex++) {
+      for (byte hatIndex = 0; hatIndex < numOfHats; hatIndex++) {
         hatValues[hatIndex] = getHatValue(hatIndex);
-    }
+      }
 
-    bleGamepad.setHats(hatValues[0], hatValues[1], hatValues[2], hatValues[3]);
+      bleGamepad.setHats(hatValues[0], hatValues[1], hatValues[2], hatValues[3]);
+      bleGamepad.setLeftThumb(0,0); 
+    } else {
+      updateAnalogStates();
+    }
+}
+
+void updateAnalogStates(){
+  int posX = 0;
+  int posY = 0;
+  signed char hatValues[numOfHats * 4] = {0};
+
+  for (byte i = 0; i < numOfHats * 4; i++) {
+    currentHatStates[i] = digitalRead(hatPins[i]);
+  }
+
+  for (byte hatIndex = 0; hatIndex < numOfHats; hatIndex++) {
+    hatValues[hatIndex] = getHatValue(hatIndex);
+  }
+
+switch(hatValues[0]){
+    case 1:
+      posX = 0;
+      posY = -32767;
+      break;
+    
+    case 2:
+      posX = 32767;
+      posY = -32767;    
+      break;
+    
+    case 3:
+      posX = 32767;
+      posY = 0;  
+      break;
+
+    case 4:
+      posX = 32767;
+      posY = 32767;  
+      break;
+
+    case 5:
+      posX = 0;
+      posY = 32767;  
+      break;
+
+    case 6:
+      posX = -32767;
+      posY = 32767;  
+      break;
+
+    case 7:
+      posX = -32767;
+      posY = 0;  
+      break;
+
+    case 8:
+      posX = -32767;
+      posY = -32767;  
+      break;
+    
+    default:
+      posX = 0;
+      posY = 0;  
+}
+  bleGamepad.setX(posX);
+  bleGamepad.setY(posY);
+
 }
 
 signed char getHatValue(byte hatIndex) {
@@ -116,4 +194,20 @@ void sendReportIfChanged() {
         
         bleGamepad.sendReport(); // Enviar relatório se algum estado mudou
     }
+}
+
+void verificaTipoDirecional(){
+  primeiroLoop = false;
+  int counter = 5000;
+  if(digitalRead(19) == LOW && digitalRead(21) == LOW){
+    while(digitalRead(19) == LOW && digitalRead(21) == LOW){
+      counter = counter - 100;
+      delay(100);
+    
+      if(counter <= 0){
+        setDirecionalAnalogico = true;
+        return;
+      }
+    }
+  }
 }
